@@ -123,6 +123,46 @@ def get_version_info():
 
     return FULLVERSION, GIT_REVISION
 
+def _cmd_exists(cmd):
+    return any(
+        os.access(os.path.join(path, cmd), os.X_OK)
+        for path in os.environ["PATH"].split(os.pathsep)
+)
+
+def _pkg_config(name):
+    if not _cmd_exists('pkg-config'):
+        print('MISSING PKG CONFIG !!')
+        return
+    try:
+        print('ALL PKGS', subprocess.check_output(['pkg-config', '--list-all']).split(b'\n'))
+        command = [
+            'pkg-config',
+            '--libs-only-L', name,
+            '--cflags-only-I', name,
+        ]
+        libs = subprocess.check_output(command).decode('utf8').split(' ')
+        return libs[1][2:].strip(), libs[0][2:].strip()
+    except Exception as e:
+        print('NOOOOOO', e)
+        pass
+
+def write_site_cfg(filename='site.cfg'):
+    """
+    Write site.cfg with openblas paths
+    found from pkg-config
+    """
+    blas_path = _pkg_config('python')
+    if not blas_path:
+        print('NO OPENBLAS')
+        return
+
+    lines = [
+        '[openblas]',
+        'include_dirs = {}/include'.format(blas_path),
+        'library_dirs = {}/lib'.format(blas_path),
+    ]
+    with open(filename, 'w') as f:
+        f.write('\n'.join(lines))
 
 def write_version_py(filename='scipy/version.py'):
     cnt = """
@@ -343,6 +383,9 @@ def configuration(parent_package='', top_path=None):
 def setup_package():
     # Rewrite the version file every time
     write_version_py()
+
+    # Write site config
+    write_site_cfg()
 
     cmdclass = {'sdist': sdist_checked}
     if HAVE_SPHINX:
